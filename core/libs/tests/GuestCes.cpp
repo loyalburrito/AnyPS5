@@ -6,6 +6,7 @@
 extern "C" {
 const std::uint8_t* APS5_VABI sceCesRefersUcsProfileCp1252(void);
 const std::uint8_t* APS5_VABI sceCesRefersUcsProfileCp1251(void);
+const std::uint8_t* APS5_VABI sceCesRefersUcsProfileCp1250(void);
 int APS5_VABI sceCesMbcsUcsContextInit(void*, const void*);
 void* APS5_VABI sceCesUcsProfileInitEucJpCp51932(void*);
 int APS5_VABI sceCesUtf8StrToMbcsStr(void*, const std::uint8_t*, std::uint32_t, std::uint32_t*, std::uint8_t*, std::uint32_t, std::uint32_t*);
@@ -114,6 +115,34 @@ int main() {
     Require(Utf8ToSbc(cyrillic, "\xC3\xA9", 2) == unassignedCode);
     Require(Utf8ToSbc(profile, "\xD0\x90", 2) == unassignedCode);
 
+    const std::uint8_t* central = sceCesRefersUcsProfileCp1250();
+    Require(central != nullptr && central == sceCesRefersUcsProfileCp1250() && central != profile && central != cyrillic);
+    RequireSbcToUtf8(central, 'A', "A");
+    RequireSbcToUtf8(central, 0x80, "\xE2\x82\xAC");
+    RequireSbcToUtf8(central, 0x81, "\xC2\x81");
+    RequireSbcToUtf8(central, 0x8C, "\xC5\x9A");
+    RequireSbcToUtf8(central, 0xA3, "\xC5\x81");
+    RequireSbcToUtf8(central, 0xE8, "\xC4\x8D");
+    RequireSbcToUtf8(central, 0xFF, "\xCB\x99");
+    RequireUtf8ToSbc(central, "\xC5\x99", 0xF8);
+    RequireUtf8ToSbc(central, "\xC3\xA9", 0xE9);
+    for (int sbc = 1; sbc < 256; ++sbc) {
+        std::uint8_t cp[4] = {};
+        std::uint32_t cpLength = 0;
+        std::uint8_t back = 0;
+        Require(sceCesSbcToUtf8(central, static_cast<std::uint8_t>(sbc), cp, sizeof(cp), &cpLength) == 0);
+        Require(sceCesUtf8ToSbc(cp, cpLength, &cpLength, central, &back) == 0 && back == sbc);
+    }
+    Require(Utf8ToSbc(central, "\xC3\x80", 2) == unassignedCode);
+    Require(Utf8ToSbc(central, "\xD0\x90", 2) == unassignedCode);
+    char centralContext[256] = {};
+    Require(sceCesMbcsUcsContextInit(centralContext, central) == 0);
+    std::uint8_t centralUtf8[8] = {};
+    std::uint32_t centralUsed = 0;
+    std::uint32_t centralProduced = 0;
+    Require(sceCesMbcsStrToUtf8Str(centralContext, reinterpret_cast<const std::uint8_t*>("\x8A\xEC"), 2, &centralUsed, centralUtf8, sizeof(centralUtf8), &centralProduced) == 0);
+    Require(centralUsed == 2 && centralProduced == 4 && std::memcmp(centralUtf8, "\xC5\xA0\xC4\x9B", 4) == 0);
+
     char context[256] = {};
     Require(sceCesMbcsUcsContextInit(context, cyrillic) == 0);
     Require(sceCesMbcsUcsContextInit(nullptr, cyrillic) == invalidParameter);
@@ -170,6 +199,9 @@ int main() {
     Require(sceCesMbcsStrToUcs2Str(eucContext, reinterpret_cast<const std::uint8_t*>("\xA9\xA1"), 2, &used, wide, 8, &produced) == unassignedCode);
     Require(sceCesMbcsStrToUcs2Str(eucContext, reinterpret_cast<const std::uint8_t*>("\xA4\x41"), 2, &used, wide, 8, &produced) == invalidEncode);
     Require(sceCesMbcsStrToUcs2Str(eucContext, reinterpret_cast<const std::uint8_t*>("\xA4"), 1, &used, wide, 8, &produced) == srcBufferEnd);
+    Require(sceCesMbcsStrToUcs2Str(eucContext, reinterpret_cast<const std::uint8_t*>("\x8F\xB0\xA1"), 3, &used, wide, 8, &produced) == invalidEncode);
+    Require(sceCesMbcsStrGetUtf8Len(eucContext, reinterpret_cast<const std::uint8_t*>("\x8F"), 1, &used, &produced) == invalidEncode);
+    Require(sceCesEucJpToUcs2(eucJp, reinterpret_cast<const std::uint8_t*>("\x8F\xB0\xA1"), 3, &used, &single) == invalidEncode);
     const std::uint16_t yen[] = {0x00A5, 0};
     Require(sceCesUcs2StrToMbcsStr(eucContext, yen, 2, &used, mbcs, sizeof(mbcs), &produced) == unassignedCode);
     std::uint32_t assigned = 0;
